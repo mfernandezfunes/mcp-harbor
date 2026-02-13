@@ -1,5 +1,6 @@
 import { HarborClient } from "@hapic/harbor";
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
+import { getLogger } from "../utils/logger.js";
 import {
   HarborArtifact,
   HarborArtifactTag,
@@ -45,6 +46,16 @@ interface ResourceCollection<T> {
   };
 }
 
+// Normalize API responses that may be an array or { data: T[] }
+function extractArray<T>(response: unknown): T[] {
+  if (Array.isArray(response)) return response;
+  if (response && typeof response === "object" && "data" in response) {
+    const data = (response as Record<string, unknown>).data;
+    if (Array.isArray(data)) return data;
+  }
+  return [];
+}
+
 export class HarborService {
   private client: HarborClient;
 
@@ -60,26 +71,39 @@ export class HarborService {
 
     const password = auth.type === "token" ? auth.token : auth.password;
 
+    // Ensure the URL includes /api/v2.0 path
+    const normalizedUrl = apiUrl.replace(/\/+$/, "");
+    const host = normalizedUrl.endsWith("/api/v2.0")
+      ? normalizedUrl
+      : `${normalizedUrl}/api/v2.0`;
+
     this.client = new HarborClient({
       request: {
         credentials: "include",
       },
       connectionOptions: {
-        host: apiUrl,
+        host: host,
         user: auth.username,
         password: password,
       },
     });
+
+    const logger = getLogger();
+    logger.debug(`HarborClient initialized (host: ${host}, user: ${auth.username}, auth: ${auth.type})`);
   }
 
   // Project operations
   async getProjects(): Promise<HarborRepository[]> {
     try {
-      const response = (await this.client.project.getMany({
-        query: {},
-      })) as ResourceCollection<Project>;
+      // Use raw HTTP client to avoid @hapic/harbor response parsing issues
+      const response = await (this.client as any).get("projects");
+      const logger = getLogger();
+      logger.debug("getProjects raw response type:", typeof response?.data);
+      logger.debug("getProjects isArray:", Array.isArray(response?.data));
+      logger.debug("getProjects sample:", JSON.stringify(response?.data)?.substring(0, 500));
 
-      return (response?.data || []).map((project) => ({
+      const projects = extractArray<Project>(response?.data);
+      return projects.map((project) => ({
         name: project.name,
         project_id: project.project_id,
         creation_time: project.creation_time,
@@ -153,12 +177,15 @@ export class HarborService {
     try {
       if (!projectId) throw new ValidationError("Project ID is required");
 
-      const response = (await this.client.projectRepository.getMany({
-        projectName: projectId,
-        query: {},
-      })) as ResourceCollection<Repository>;
+      // Use raw HTTP client to avoid @hapic/harbor response parsing issues
+      const response = await (this.client as any).get(`projects/${projectId}/repositories`);
+      const logger = getLogger();
+      logger.debug("getRepositories raw response type:", typeof response?.data);
+      logger.debug("getRepositories isArray:", Array.isArray(response?.data));
+      logger.debug("getRepositories sample:", JSON.stringify(response?.data)?.substring(0, 500));
 
-      return (response?.data || []).map((repo) => ({
+      const repos = extractArray<Repository>(response?.data);
+      return repos.map((repo) => ({
         name: repo.name,
         artifact_count: repo.artifact_count,
         creation_time: repo.creation_time,
@@ -285,12 +312,11 @@ export class HarborService {
     try {
       if (!projectId) throw new ValidationError("Project ID is required");
 
-      const response = (await this.client.projectRepository.getMany({
-        projectName: projectId,
-        query: {},
-      })) as ResourceCollection<Repository>;
+      // Use raw HTTP client to avoid @hapic/harbor response parsing issues
+      const response = await (this.client as any).get(`projects/${projectId}/repositories`);
+      const allRepos = extractArray<Repository>(response?.data);
 
-      const chartRepos = (response?.data || []).filter(
+      const chartRepos = allRepos.filter(
         (repo) => repo.name && repo.name.includes("/charts/")
       );
 
@@ -382,6 +408,9 @@ export class HarborService {
   }
 
   private handleError(error: unknown, defaultMessage: string): never {
+    const logger = getLogger();
+    logger.error(defaultMessage, error instanceof Error ? error.message : error);
+
     if (error instanceof Error) {
       if (error instanceof ValidationError || error instanceof ResourceError) {
         throw error;
@@ -395,6 +424,9 @@ export class HarborService {
     toolName: string,
     args: Record<string, unknown>
   ): Promise<{ content: { type: string; text: string }[] }> {
+    const logger = getLogger();
+    logger.debug(`Tool request: ${toolName}`, args);
+
     const validateParam = (param: unknown, name: string): string => {
       if (!param) {
         throw new McpError(ErrorCode.InvalidParams, `${name} is required`);

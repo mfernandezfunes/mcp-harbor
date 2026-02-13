@@ -79,7 +79,8 @@ The application accepts the following command line arguments:
 
 ```bash
 Options:
-  --url       Harbor API URL                              [string] [required]
+  --url       Harbor base URL (e.g. https://harbor.example.com)
+              /api/v2.0 is appended automatically if missing [string] [required]
   --username  Harbor username (or robot account name)     [string] [required]
   --password  Harbor password (mutually exclusive with --token)       [string]
   --token     Harbor token for robot/service accounts                [string]

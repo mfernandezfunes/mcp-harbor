@@ -17,6 +17,7 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import express from "express";
 import { createRequire } from "module";
+import { initLogger } from "./utils/logger.js";
 
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json");
@@ -81,9 +82,19 @@ const argv = yargs(hideBin(process.argv))
   .help()
   .parseSync();
 
+// Initialize logger with debug flag
+const logger = initLogger(argv.debug);
+logger.debug("Starting MCP Harbor server v" + pkg.version);
+logger.debug(`Harbor URL: ${argv.url}`);
+logger.debug(`Auth type: ${argv.token ? "token" : "password"}`);
+logger.debug(`Username: ${argv.username}`);
+logger.debug(`Insecure mode: ${argv.insecure}`);
+logger.debug(`Transport: ${argv.sse ? "SSE" : "Stdio"}`);
+
 // Disable TLS/SSL certificate validation if --insecure flag is set
 if (argv.insecure) {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+  logger.debug("TLS/SSL certificate validation disabled");
 }
 
 // Build authentication config
@@ -120,11 +131,11 @@ const createServer: () => Promise<Server> = async (): Promise<Server> => {
   );
 
   server.onerror = (error: Error): void => {
-    console.error("[MCP Error]", error);
-    console.error("[MCP Error Stack]", error.stack);
+    logger.error("MCP Error:", error.message);
+    logger.debug("MCP Error Stack:", error.stack);
 
     if (error.cause) {
-      console.error("[MCP Error Cause]", error.cause);
+      logger.debug("MCP Error Cause:", error.cause);
     }
   };
 
@@ -164,7 +175,7 @@ const server = await createServer();
 
 // Check if SSE transport is enabled
 if (argv.sse) {
-  console.info("[MCP Server] Using SSE transport");
+  logger.info("Using SSE transport");
   const app = express();
 
   const transports = new Map<string, SSEServerTransport>();
@@ -172,11 +183,11 @@ if (argv.sse) {
   app.get("/sse", async (req, res) => {
     const transport = new SSEServerTransport("/messages", res);
     transports.set(transport.sessionId, transport);
-    console.log(`[MCP Server] SSE connection established (session: ${transport.sessionId})`);
+    logger.debug(`SSE connection established (session: ${transport.sessionId})`);
 
     res.on("close", () => {
       transports.delete(transport.sessionId);
-      console.log(`[MCP Server] SSE connection closed (session: ${transport.sessionId})`);
+      logger.debug(`SSE connection closed (session: ${transport.sessionId})`);
     });
 
     await server.connect(transport);
@@ -193,7 +204,7 @@ if (argv.sse) {
   });
 
   app.listen(argv.port, "0.0.0.0", () => {
-    console.info(`[MCP Server] SSE server running on port ${argv.port}`);
+    logger.info(`SSE server running on port ${argv.port}`);
   });
 } else {
   await server.connect(new StdioServerTransport());

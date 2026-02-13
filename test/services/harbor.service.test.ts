@@ -45,6 +45,7 @@ interface Artifact {
 }
 
 type MockHarborClient = {
+  get: jest.MockedFunction<(url: string) => Promise<{ data: unknown }>>;
   project: {
     getMany: jest.MockedFunction<() => Promise<{ data: Project[] }>>;
     getOne: jest.MockedFunction<
@@ -80,6 +81,7 @@ type MockHarborClient = {
 jest.mock("@hapic/harbor", () => {
   return {
     HarborClient: jest.fn().mockImplementation(() => ({
+      get: jest.fn(),
       project: {
         getMany: jest.fn(),
         getOne: jest.fn(),
@@ -163,9 +165,42 @@ describe("HarborService", () => {
       expect(HarborClient).toHaveBeenCalledWith(
         expect.objectContaining({
           connectionOptions: expect.objectContaining({
-            host: testTokenConfig.apiUrl,
+            host: testTokenConfig.apiUrl + "/api/v2.0",
             user: testTokenConfig.auth.username,
             password: testTokenConfig.auth.token,
+          }),
+        })
+      );
+    });
+
+    it("should auto-append /api/v2.0 to URL if missing", () => {
+      new HarborService("http://harbor.example.com", testConfig.auth);
+      expect(HarborClient).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionOptions: expect.objectContaining({
+            host: "http://harbor.example.com/api/v2.0",
+          }),
+        })
+      );
+    });
+
+    it("should not duplicate /api/v2.0 if already present", () => {
+      new HarborService("http://harbor.example.com/api/v2.0", testConfig.auth);
+      expect(HarborClient).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionOptions: expect.objectContaining({
+            host: "http://harbor.example.com/api/v2.0",
+          }),
+        })
+      );
+    });
+
+    it("should strip trailing slashes before appending /api/v2.0", () => {
+      new HarborService("http://harbor.example.com/", testConfig.auth);
+      expect(HarborClient).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionOptions: expect.objectContaining({
+            host: "http://harbor.example.com/api/v2.0",
           }),
         })
       );
@@ -195,19 +230,17 @@ describe("HarborService", () => {
   });
 
   describe("getProjects", () => {
-    const mockProjects = {
-      data: [
-        {
-          name: "test-project",
-          project_id: 1,
-          creation_time: "2024-01-01T00:00:00Z",
-          update_time: "2024-01-02T00:00:00Z",
-        },
-      ],
-    };
+    const mockProjectsArray = [
+      {
+        name: "test-project",
+        project_id: 1,
+        creation_time: "2024-01-01T00:00:00Z",
+        update_time: "2024-01-02T00:00:00Z",
+      },
+    ];
 
     it("should return mapped projects", async () => {
-      mockClient.project.getMany.mockResolvedValue(mockProjects);
+      mockClient.get.mockResolvedValue({ data: mockProjectsArray });
 
       const result = await harborService.getProjects();
 
@@ -219,11 +252,19 @@ describe("HarborService", () => {
           update_time: "2024-01-02T00:00:00Z",
         },
       ]);
-      expect(mockClient.project.getMany).toHaveBeenCalledWith({ query: {} });
+      expect(mockClient.get).toHaveBeenCalledWith("projects");
     });
 
     it("should handle empty response", async () => {
-      mockClient.project.getMany.mockResolvedValue({ data: [] });
+      mockClient.get.mockResolvedValue({ data: [] });
+
+      const result = await harborService.getProjects();
+
+      expect(result).toEqual([]);
+    });
+
+    it("should handle null data response", async () => {
+      mockClient.get.mockResolvedValue({ data: null });
 
       const result = await harborService.getProjects();
 
@@ -231,7 +272,7 @@ describe("HarborService", () => {
     });
 
     it("should handle errors", async () => {
-      mockClient.project.getMany.mockRejectedValue(new Error());
+      mockClient.get.mockRejectedValue(new Error());
 
       await expect(harborService.getProjects()).rejects.toThrow(
         "Failed to get projects"
@@ -356,16 +397,14 @@ describe("HarborService", () => {
   });
 
   describe("getRepositories", () => {
-    const mockRepos = {
-      data: [
-        {
-          name: "test-repo",
-          artifact_count: 5,
-          creation_time: "2024-01-01T00:00:00Z",
-          update_time: "2024-01-02T00:00:00Z",
-        },
-      ],
-    };
+    const mockReposArray = [
+      {
+        name: "test-repo",
+        artifact_count: 5,
+        creation_time: "2024-01-01T00:00:00Z",
+        update_time: "2024-01-02T00:00:00Z",
+      },
+    ];
 
     it("should throw ValidationError if projectId is empty", async () => {
       await expect(harborService.getRepositories("")).rejects.toThrow(
@@ -374,7 +413,7 @@ describe("HarborService", () => {
     });
 
     it("should return mapped repositories", async () => {
-      mockClient.projectRepository.getMany.mockResolvedValue(mockRepos);
+      mockClient.get.mockResolvedValue({ data: mockReposArray });
 
       const result = await harborService.getRepositories("test-project");
 
@@ -386,10 +425,25 @@ describe("HarborService", () => {
           update_time: "2024-01-02T00:00:00Z",
         },
       ]);
-      expect(mockClient.projectRepository.getMany).toHaveBeenCalledWith({
-        projectName: "test-project",
-        query: {},
-      });
+      expect(mockClient.get).toHaveBeenCalledWith(
+        "projects/test-project/repositories"
+      );
+    });
+
+    it("should handle empty response", async () => {
+      mockClient.get.mockResolvedValue({ data: [] });
+
+      const result = await harborService.getRepositories("test-project");
+
+      expect(result).toEqual([]);
+    });
+
+    it("should handle errors", async () => {
+      mockClient.get.mockRejectedValue(new Error());
+
+      await expect(
+        harborService.getRepositories("test-project")
+      ).rejects.toThrow("Failed to get repositories for project test-project");
     });
   });
 
@@ -524,22 +578,20 @@ describe("HarborService", () => {
   });
 
   describe("getCharts", () => {
-    const mockRepos = {
-      data: [
-        {
-          name: "test-project/charts/test-chart",
-          artifact_count: 2,
-          creation_time: "2024-01-01T00:00:00Z",
-          update_time: "2024-01-02T00:00:00Z",
-        },
-        {
-          name: "test-project/not-a-chart",
-          artifact_count: 1,
-          creation_time: "2024-01-01T00:00:00Z",
-          update_time: "2024-01-02T00:00:00Z",
-        },
-      ],
-    };
+    const mockReposArray = [
+      {
+        name: "test-project/charts/test-chart",
+        artifact_count: 2,
+        creation_time: "2024-01-01T00:00:00Z",
+        update_time: "2024-01-02T00:00:00Z",
+      },
+      {
+        name: "test-project/not-a-chart",
+        artifact_count: 1,
+        creation_time: "2024-01-01T00:00:00Z",
+        update_time: "2024-01-02T00:00:00Z",
+      },
+    ];
 
     it("should throw ValidationError if projectId is empty", async () => {
       await expect(harborService.getCharts("")).rejects.toThrow(
@@ -547,8 +599,8 @@ describe("HarborService", () => {
       );
     });
 
-    it("should return mapped charts", async () => {
-      mockClient.projectRepository.getMany.mockResolvedValue(mockRepos);
+    it("should return mapped charts filtering only chart repos", async () => {
+      mockClient.get.mockResolvedValue({ data: mockReposArray });
 
       const result = await harborService.getCharts("test-project");
 
@@ -561,6 +613,9 @@ describe("HarborService", () => {
           updated: "2024-01-02T00:00:00Z",
         },
       ]);
+      expect(mockClient.get).toHaveBeenCalledWith(
+        "projects/test-project/repositories"
+      );
     });
   });
 
