@@ -82,6 +82,7 @@ Options:
   --username  Harbor username (or robot account name)     [string] [required]
   --password  Harbor password (mutually exclusive with --token)       [string]
   --token     Harbor token for robot/service accounts                [string]
+  --insecure  Disable TLS/SSL certificate validation [boolean] [default: false]
   --debug     Enable debug mode                   [boolean] [default: false]
   --help      Show help                                             [boolean]
 ```
@@ -107,6 +108,9 @@ HARBOR_PASSWORD=Harbor12345
 
 # Debug Mode (true/false)
 DEBUG=false
+
+# Disable TLS/SSL certificate validation (true/false)
+# HARBOR_INSECURE=false
 ```
 
 #### Token Authentication (Robot/Service Accounts)

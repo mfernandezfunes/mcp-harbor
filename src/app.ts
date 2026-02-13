@@ -16,9 +16,10 @@ import { config } from "dotenv";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import express from "express";
+import { createRequire } from "module";
 
-// Disable TLS/SSL certificate validation
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+const require = createRequire(import.meta.url);
+const pkg = require("../package.json");
 
 // Load environment variables
 config();
@@ -62,6 +63,11 @@ const argv = yargs(hideBin(process.argv))
       description: "Port for SSE transport",
       default: 3000,
     },
+    insecure: {
+      type: "boolean",
+      description: "Disable TLS/SSL certificate validation",
+      default: false,
+    },
   })
   .check((args) => {
     if (!args.password && !args.token) {
@@ -74,6 +80,11 @@ const argv = yargs(hideBin(process.argv))
   })
   .help()
   .parseSync();
+
+// Disable TLS/SSL certificate validation if --insecure flag is set
+if (argv.insecure) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+}
 
 // Build authentication config
 const auth: HarborAuth = argv.token
@@ -99,7 +110,7 @@ const createServer: () => Promise<Server> = async (): Promise<Server> => {
   const server: Server = new Server(
     {
       name: "mcp-harbor",
-      version: "1.0.0",
+      version: pkg.version,
     },
     {
       capabilities: {
@@ -156,18 +167,26 @@ if (argv.sse) {
   console.info("[MCP Server] Using SSE transport");
   const app = express();
 
-  let transport: SSEServerTransport | null = null;
+  const transports = new Map<string, SSEServerTransport>();
 
   app.get("/sse", async (req, res) => {
-    console.log("[MCP Server] SSE connection established");
+    const transport = new SSEServerTransport("/messages", res);
+    transports.set(transport.sessionId, transport);
+    console.log(`[MCP Server] SSE connection established (session: ${transport.sessionId})`);
 
-    transport = new SSEServerTransport("/messages", res);
+    res.on("close", () => {
+      transports.delete(transport.sessionId);
+      console.log(`[MCP Server] SSE connection closed (session: ${transport.sessionId})`);
+    });
+
     await server.connect(transport);
   });
 
   app.post("/messages", (req, res) => {
+    const sessionId = req.query.sessionId as string;
+    const transport = sessionId ? transports.get(sessionId) : undefined;
     if (!transport) {
-      res.status(400).send("No SSE connection established");
+      res.status(400).send("No SSE connection found for this session");
       return;
     }
     transport.handlePostMessage(req, res);
