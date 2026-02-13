@@ -17,6 +17,7 @@ MCP Harbor is a Node.js application that provides a Model Context Protocol (MCP)
   - [Usage](#usage)
     - [Command Line Arguments](#command-line-arguments)
     - [Environment Variables](#environment-variables)
+    - [MCP Client Configuration](#mcp-client-configuration)
   - [MCP Tools](#mcp-tools)
   - [Development](#development)
     - [Running in Development Mode](#running-in-development-mode)
@@ -124,6 +125,117 @@ Harbor supports robot accounts for automated access. To use token-based authenti
 ```bash
 mcp-harbor --url https://harbor.example.com --username "robot\$myrobot" --token "your-robot-token"
 ```
+
+### MCP Client Configuration
+
+#### Claude Desktop
+
+Add the following to your Claude Desktop configuration file (`claude_desktop_config.json`):
+
+**Using password authentication:**
+
+```json
+{
+  "mcpServers": {
+    "harbor": {
+      "command": "npx",
+      "args": [
+        "mcp-harbor",
+        "--url", "https://harbor.example.com",
+        "--username", "admin",
+        "--password", "your-password"
+      ]
+    }
+  }
+}
+```
+
+**Using token authentication (robot/service account):**
+
+```json
+{
+  "mcpServers": {
+    "harbor": {
+      "command": "npx",
+      "args": [
+        "mcp-harbor",
+        "--url", "https://harbor.example.com",
+        "--username", "robot$myrobot",
+        "--token", "your-robot-token"
+      ]
+    }
+  }
+}
+```
+
+**With self-signed certificates:**
+
+```json
+{
+  "mcpServers": {
+    "harbor": {
+      "command": "npx",
+      "args": [
+        "mcp-harbor",
+        "--url", "https://harbor.example.com",
+        "--username", "admin",
+        "--password", "your-password",
+        "--insecure"
+      ]
+    }
+  }
+}
+```
+
+#### Cursor / Windsurf
+
+Add the following to your MCP configuration file (`.cursor/mcp.json` or `.windsurf/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "harbor": {
+      "command": "npx",
+      "args": [
+        "mcp-harbor",
+        "--url", "https://harbor.example.com",
+        "--username", "admin",
+        "--password", "your-password"
+      ]
+    }
+  }
+}
+```
+
+#### Using environment variables
+
+You can also reference environment variables to avoid hardcoding credentials:
+
+```json
+{
+  "mcpServers": {
+    "harbor": {
+      "command": "npx",
+      "args": ["mcp-harbor"],
+      "env": {
+        "HARBOR_URL": "https://harbor.example.com",
+        "HARBOR_USERNAME": "admin",
+        "HARBOR_PASSWORD": "your-password"
+      }
+    }
+  }
+}
+```
+
+#### SSE Transport (remote/shared server)
+
+If you prefer running the MCP server as a standalone process with SSE transport:
+
+```bash
+npx mcp-harbor --url https://harbor.example.com --username admin --password your-password --sse --port 3000
+```
+
+Then configure your MCP client to connect via SSE at `http://localhost:3000/sse`.
 
 ## MCP Tools
 
