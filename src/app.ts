@@ -11,6 +11,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { HarborService } from "./services/harbor.service.js";
 import { TOOL_DEFINITIONS } from "./definitions/tool.definitions.js";
+import { HarborAuth } from "./types/index.js";
 import { config } from "dotenv";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
@@ -33,14 +34,18 @@ const argv = yargs(hideBin(process.argv))
     },
     username: {
       type: "string",
-      description: "Harbor username",
+      description: "Harbor username (or robot account name)",
       demandOption: true,
       default: "admin",
     },
     password: {
       type: "string",
-      description: "Harbor password",
-      demandOption: true,
+      description: "Harbor password (mutually exclusive with --token)",
+    },
+    token: {
+      type: "string",
+      description:
+        "Harbor token for service/robot account authentication (mutually exclusive with --password)",
     },
     debug: {
       type: "boolean",
@@ -58,14 +63,25 @@ const argv = yargs(hideBin(process.argv))
       default: 3000,
     },
   })
+  .check((args) => {
+    if (!args.password && !args.token) {
+      throw new Error("Either --password or --token must be provided");
+    }
+    if (args.password && args.token) {
+      throw new Error("--password and --token are mutually exclusive");
+    }
+    return true;
+  })
   .help()
-  .parseSync(); // Use parseSync instead of argv
+  .parseSync();
+
+// Build authentication config
+const auth: HarborAuth = argv.token
+  ? { type: "token", username: argv.username, token: argv.token }
+  : { type: "password", username: argv.username, password: argv.password! };
 
 // Initialize HarborService with command line arguments
-const harborService = new HarborService(argv.url, {
-  username: argv.username,
-  password: argv.password,
-});
+const harborService = new HarborService(argv.url, auth);
 
 const createServer: () => Promise<Server> = async (): Promise<Server> => {
   interface ToolDefinition {

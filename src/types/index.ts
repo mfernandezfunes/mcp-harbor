@@ -104,6 +104,21 @@ export const TOOL_NAMES = {
   DELETE_CHART: "delete_chart",
 } as const;
 
+// Authentication Types
+export interface PasswordAuth {
+  type: "password";
+  username: string;
+  password: string;
+}
+
+export interface TokenAuth {
+  type: "token";
+  username: string;
+  token: string;
+}
+
+export type HarborAuth = PasswordAuth | TokenAuth;
+
 // Response Types
 export interface DeleteResponse {
   success: boolean;

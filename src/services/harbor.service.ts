@@ -3,6 +3,7 @@ import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import {
   HarborArtifact,
   HarborArtifactTag,
+  HarborAuth,
   HarborChart,
   HarborChartVersion,
   HarborRepository,
@@ -47,10 +48,17 @@ interface ResourceCollection<T> {
 export class HarborService {
   private client: HarborClient;
 
-  constructor(apiUrl: string, auth: { username: string; password: string }) {
+  constructor(apiUrl: string, auth: HarborAuth) {
     if (!apiUrl) throw new ValidationError("API URL is required");
     if (!auth.username) throw new ValidationError("Username is required");
-    if (!auth.password) throw new ValidationError("Password is required");
+
+    if (auth.type === "token") {
+      if (!auth.token) throw new ValidationError("Token is required");
+    } else {
+      if (!auth.password) throw new ValidationError("Password is required");
+    }
+
+    const password = auth.type === "token" ? auth.token : auth.password;
 
     this.client = new HarborClient({
       request: {
@@ -59,7 +67,7 @@ export class HarborService {
       connectionOptions: {
         host: apiUrl,
         user: auth.username,
-        password: auth.password,
+        password: password,
       },
     });
   }

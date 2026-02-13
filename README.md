@@ -78,12 +78,15 @@ The application accepts the following command line arguments:
 
 ```bash
 Options:
-  --url       Harbor API URL                     [string] [required]
-  --username  Harbor username                    [string] [required]
-  --password  Harbor password                    [string] [required]
-  --debug     Enable debug mode          [boolean] [default: false]
-  --help      Show help                                  [boolean]
+  --url       Harbor API URL                              [string] [required]
+  --username  Harbor username (or robot account name)     [string] [required]
+  --password  Harbor password (mutually exclusive with --token)       [string]
+  --token     Harbor token for robot/service accounts                [string]
+  --debug     Enable debug mode                   [boolean] [default: false]
+  --help      Show help                                             [boolean]
 ```
+
+> **Note:** You must provide either `--password` or `--token`, but not both.
 
 ### Environment Variables
 
@@ -93,10 +96,29 @@ Instead of command line arguments, you can also use environment variables. Creat
 # Harbor API Configuration
 HARBOR_URL=https://harbor.example.com
 HARBOR_USERNAME=admin
+
+# Authentication: use either PASSWORD or TOKEN (mutually exclusive)
+# Option 1: Password-based authentication
 HARBOR_PASSWORD=Harbor12345
+
+# Option 2: Token-based authentication (for robot/service accounts)
+# HARBOR_USERNAME=robot$myrobot
+# HARBOR_TOKEN=your-robot-token-here
 
 # Debug Mode (true/false)
 DEBUG=false
+```
+
+#### Token Authentication (Robot/Service Accounts)
+
+Harbor supports robot accounts for automated access. To use token-based authentication:
+
+1. Create a robot account in your Harbor instance (Administration > Robot Accounts)
+2. Use the robot account name as `--username` (e.g., `robot$myrobot`)
+3. Use the generated token as `--token`
+
+```bash
+mcp-harbor --url https://harbor.example.com --username "robot\$myrobot" --token "your-robot-token"
 ```
 
 ## MCP Tools

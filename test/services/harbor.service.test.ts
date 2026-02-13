@@ -105,8 +105,18 @@ describe("HarborService", () => {
   const testConfig = {
     apiUrl: "http://harbor.example.com",
     auth: {
+      type: "password" as const,
       username: "testuser",
       password: "testpass",
+    },
+  };
+
+  const testTokenConfig = {
+    apiUrl: "http://harbor.example.com",
+    auth: {
+      type: "token" as const,
+      username: "robot$myrobot",
+      token: "test-robot-token",
     },
   };
 
@@ -140,6 +150,45 @@ describe("HarborService", () => {
           new HarborService(testConfig.apiUrl, {
             ...testConfig.auth,
             password: "",
+          })
+      ).toThrow(ValidationError);
+    });
+
+    it("should create service with token-based auth", () => {
+      const service = new HarborService(
+        testTokenConfig.apiUrl,
+        testTokenConfig.auth
+      );
+      expect(service).toBeDefined();
+      expect(HarborClient).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionOptions: expect.objectContaining({
+            host: testTokenConfig.apiUrl,
+            user: testTokenConfig.auth.username,
+            password: testTokenConfig.auth.token,
+          }),
+        })
+      );
+    });
+
+    it("should throw ValidationError if token is missing for token auth", () => {
+      expect(
+        () =>
+          new HarborService(testConfig.apiUrl, {
+            type: "token",
+            username: "robot$myrobot",
+            token: "",
+          })
+      ).toThrow(ValidationError);
+    });
+
+    it("should throw ValidationError if username is missing for token auth", () => {
+      expect(
+        () =>
+          new HarborService(testConfig.apiUrl, {
+            type: "token",
+            username: "",
+            token: "some-token",
           })
       ).toThrow(ValidationError);
     });
